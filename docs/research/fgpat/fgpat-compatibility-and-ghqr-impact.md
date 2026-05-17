@@ -1,6 +1,6 @@
-# Classic PAT / Fine-grained PAT compatibility matrix
+# FGPAT compatibility and ghqr impact
 
-この資料は、GitHub personal access token (classic) と Fine-grained personal access token (FGPAT) の差分を、GitHub 公式 Docs、ghqr ソースコード、既存の限定実測結果に基づいて整理する。
+この資料は、GitHub personal access token (classic) と Fine-grained personal access token (FGPAT) の差分、既存の限定実測結果、ghqr への影響、README / warning 改善案を 1 つに統合した根拠資料である。
 
 推論で断定しない。公式 Docs で確認できない項目は `未確認` と書く。実 organization、repository、enterprise、username、token 値、token の一部は記録しない。
 
@@ -31,14 +31,6 @@
 
 - GitHub Blog: Introducing fine-grained personal access tokens
   - https://github.blog/security/application-security/introducing-fine-grained-personal-access-tokens-for-github/
-
-ghqr 既存資料:
-
-- `docs/research/fgpat/fgpat-full-validation.md`
-- `docs/research/fgpat/fgpat-validation-design.md`
-- `docs/research/fgpat/fgpat-pr-plan.md`
-- `docs/research/fgpat/fgpat-capability-diff.md`
-- `docs/research/fgpat/enterprise-validation-runbook.md`
 
 ghqr ソースコード:
 
@@ -79,6 +71,18 @@ ghqr ソースコード:
   - Organization / Enterprise / audit / Copilot / security endpoint は、FGPAT の Resource owner、Repository access、permission、organization approval、enterprise role、GitHub product availability に影響される。
   - ghqr ソースコード上、token 種別判定はしていない。`GH_TOKEN`、次に `GITHUB_TOKEN` を読み、同じ token を REST / GraphQL client へ渡す。
   - 現時点の既存実測では、REST / GraphQL 単体では成功するが ghqr だけ失敗する箇所は確認されていない。
+
+## 1.1 ghqr source code inventory
+
+ghqr は token 種別で分岐しない。`GH_TOKEN` を優先し、空なら `GITHUB_TOKEN` を読み、同じ token transport を REST / GraphQL / raw HTTP client で共有する。
+
+| 領域 | ファイル | 確認内容 |
+|---|---|---|
+| token / client initialization | `internal/config/github.go`, `internal/pipeline/stage_initialization.go` | `GH_TOKEN`、次に `GITHUB_TOKEN` を読む。`oauth2.StaticTokenSource` で REST / GraphQL client を作る。認証確認は REST `GET /user` 相当。 |
+| repository scan | `internal/scanners/graphql_client.go`, `internal/scanners/batch.go`, `internal/scanners/ruleset.go` | GraphQL `repository(owner:, name:)`、repository metadata、branch protection、rulesets、vulnerability alerts、collaborators、deploy keys、file presence checks を使う。 |
+| organization scan / discovery | `internal/scanners/organization.go`, `internal/pipeline/stage_org_repository_scan.go` | REST org endpoint と GraphQL `organization.repositories` を使う。Actions、Dependabot、code scanning、secret scanning、security managers、Copilot billing を endpoint 単位で取得する。 |
+| enterprise scan / discovery | `internal/scanners/enterprise.go`, `internal/pipeline/stage_enterprise_discovery.go` | GraphQL `viewer.enterprises`、`enterprise(slug:)`、`enterprise.organizations` と REST enterprise audit / security / code security endpoint を使う。 |
+| report rendering | `internal/renderers` | JSON / Markdown / Excel rendering は token 種別に依存しない。 |
 
 ## 2. 用語定義
 
@@ -168,7 +172,7 @@ ghqr が利用する REST endpoint と、prompt で確認対象に指定され�
 
 | ghqrコマンド/機能 | FGPATで詰まる条件 | 一次分類 | 根拠 | ghqrでの扱い |
 |---|---|---|---|---|
-| `ghqr scan --repository ORG/REPO` | Resource owner が対象 organization ではない | FGPAT設定不足 | `docs/research/fgpat/fgpat-validation-design.md` | REST `GET /repos/ORG/REPO` は `404`、GraphQL repository resolve も失敗した既存実測あり。 |
+| `ghqr scan --repository ORG/REPO` | Resource owner が対象 organization ではない | FGPAT設定不足 | この資料の既存実測サマリ | REST `GET /repos/ORG/REPO` は `404`、GraphQL repository resolve も失敗した既存実測あり。 |
 | `ghqr scan --repository ORG/REPO` | Repository access に対象 repository が含まれていない | FGPAT設定不足 | https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens | `404` または repository resolve failure として見えるため、troubleshooting で確認対象にする。 |
 | `ghqr scan --repository ORG/REPO` | `Contents: Read-only` がない | FGPAT permission不足 | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens | file presence checks や config file detection の欠落として切り分ける。 |
 | `ghqr scan --repository ORG/REPO` | `Administration: Read-only` がない | FGPAT permission不足 | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens | ruleset / branch protection enrichment の失敗として切り分ける。 |
@@ -238,6 +242,51 @@ GitHub GraphQL docs は、personal access token で GraphQL API に認証でき�
 | audit log | REST `GET /enterprises/{enterprise}/audit-log` | Enterprise admin + `read:audit_log` | FGPAT PAT は非対応として扱う | 既存実測では両 token とも `403` | Enterprise admin / endpoint token type | FGPAT では Classic PAT と同等にできない項目として文書化 | 必要 |
 | report rendering | local JSON / Markdown / Excel rendering | token 種別に依存しない | token 種別に依存しない | 両方 success | API scan results が前提 | Raw reports は commit 禁止 | 必要 |
 
+## 8.1 既存実測結果の統合サマリ
+
+既存検証は、公開 fork に載せるため実 organization / repository / username を placeholder 化している。新規の organization-wide scan / enterprise-wide scan はこの再設計では実施していない。
+
+| Feature | Classic PAT result | FGPAT result | Same behavior? | Classification |
+|---|---|---|---|---|
+| explicit repository scan | success、exit code 0、reports generated | success、exit code 0、reports generated | Yes | 両方可能 |
+| organization scan | success、exit code 0、限定 org / repo で完了 | success、exit code 0、限定 org / repo で完了 | Yes | 両方可能 |
+| organization auto-discovery | 限定 org を検出 | 限定 org を検出 | Yes in this validation | 両方可能 |
+| enterprise discovery | `read:enterprise` 不足 warning | `read:enterprise` 不足 warning | Yes | Enterprise permission limitation |
+| enterprise scan | enterprise settings は失敗、後続 org scan は成功 | enterprise settings は失敗、後続 org scan は成功 | Yes | Enterprise permission limitation |
+| audit log | REST 単体 `403` | REST 単体 `403` | Yes | Enterprise permission / token type limitation |
+| Copilot | REST 単体 exit code 0 | REST 単体 exit code 0 | Yes | 両方可能 |
+| security endpoints | REST 単体 exit code 0 | REST 単体 exit code 0 | Yes | 両方可能 |
+| org actions permissions | REST 単体 `403` | REST 単体 `403` | Yes | Permission limitation |
+| ruleset / branch protection | scan 内で success | scan 内で success | Yes | 両方可能 |
+| REST / GraphQL 単体成功だが ghqr だけ失敗 | 未検出 | 未検出 | N/A | ghqr-only failure なし |
+
+重要な因果関係:
+
+- 最初の FGPAT 失敗は、token 自体ではなく Resource owner / Repository access が対象 organization repository と一致していなかったことによる。
+- Resource owner を対象 organization にし、対象 repository を Repository access に含め、Metadata / Contents / Administration read を付与した FGPAT では repository visibility と `ghqr scan --repository ORG/REPO` が成功した。
+- Enterprise discovery / audit log / enterprise settings の失敗は、REST / GraphQL 単体でも同じ制限が出ており、現時点では ghqr-only failure ではない。
+
+## 8.2 PR / Issue draft
+
+### PR draft
+
+`ghqr` の Fine-grained PAT 対応について、現時点の調査では explicit repository scan と限定 organization scan は適切な token 設定で正常動作することを確認した。
+
+Fine-grained PAT は Classic PAT の完全上位互換ではない。GitHub API は endpoint ごとの permission、Resource owner、Repository access、organization approval policy、enterprise role、product availability の影響を受ける。
+
+今回の調査では、最初の失敗は `ghqr` の不具合ではなく、Fine-grained PAT の Resource owner と Repository access 設定不整合により説明できた。その後、対象 organization を Resource owner にし、対象 repository を明示した Fine-grained PAT では、repository visibility の REST API と `ghqr scan --repository` の両方が成功した。
+
+現時点では必須の機能修正ではなく、README、warning、troubleshooting を改善し、Fine-grained PAT の前提条件と制約を明確にする方針が妥当である。
+
+### Issue bullets
+
+- FGPAT でも explicit repository scan は成功済み。
+- Classic PAT と完全同一挙動は保証しない。
+- Resource owner、Repository access、permissions、organization approval policy が重要。
+- Enterprise / audit / Copilot / security endpoint は追加 permission、GitHub API 制限、GitHub product availability に依存する。
+- 現時点で REST / GraphQL 単体は成功するが ghqr だけ失敗する箇所は確認されていない。
+- README / warning / troubleshooting を先に改善するのが妥当。
+
 ## 9. 実測計画
 
 安全条件:
@@ -254,12 +303,12 @@ GitHub GraphQL docs は、personal access token で GraphQL API に認証でき�
 
 | 検証ID | token種別 | 設定 | コマンド | 期待結果 | 実際の結果 | exit code | HTTP status | 分類 | 根拠 |
 |---|---|---|---|---|---|---|---|---|---|
-| T01 | Classic PAT | repository read 可能 | `gh api repos/ORG/REPO --jq .full_name` | `ORG/REPO` が返る | 既存実測で成功 | 0 | 200 | 両方可能 | `docs/research/fgpat/fgpat-validation-design.md` |
-| T02 | FGPAT | Resource owner が ORG、Repository access が REPO | `GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh api repos/ORG/REPO --jq .full_name` | `ORG/REPO` が返る | 既存実測で成功 | 0 | 200 | 両方可能 | `docs/research/fgpat/fgpat-validation-design.md` |
-| T03 | Classic PAT | repository read 可能 | `GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --repository ORG/REPO --output-name docs/research/fgpat/results/classic-repo` | scan completed、reports generated | 既存実測で成功 | 0 | N/A | 両方可能 | `docs/research/fgpat/fgpat-validation-design.md` |
-| T04 | FGPAT | Resource owner が ORG、Repository access が REPO、必要 permission 付与済み | `GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --repository ORG/REPO --output-name docs/research/fgpat/results/fgpat-repo` | scan completed、reports generated | 既存実測で成功 | 0 | N/A | 両方可能 | `docs/research/fgpat/fgpat-validation-design.md` |
+| T01 | Classic PAT | repository read 可能 | `gh api repos/ORG/REPO --jq .full_name` | `ORG/REPO` が返る | 既存実測で成功 | 0 | 200 | 両方可能 | この資料の既存実測サマリ |
+| T02 | FGPAT | Resource owner が ORG、Repository access が REPO | `GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh api repos/ORG/REPO --jq .full_name` | `ORG/REPO` が返る | 既存実測で成功 | 0 | 200 | 両方可能 | この資料の既存実測サマリ |
+| T03 | Classic PAT | repository read 可能 | `GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --repository ORG/REPO --output-name docs/research/fgpat/results/classic-repo` | scan completed、reports generated | 既存実測で成功 | 0 | N/A | 両方可能 | この資料の既存実測サマリ |
+| T04 | FGPAT | Resource owner が ORG、Repository access が REPO、必要 permission 付与済み | `GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --repository ORG/REPO --output-name docs/research/fgpat/results/fgpat-repo` | scan completed、reports generated | 既存実測で成功 | 0 | N/A | 両方可能 | この資料の既存実測サマリ |
 | T05 | FGPAT | permission を 1 つ外す | `GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-missing-permission gh auth token)" ghqr scan --repository ORG/REPO --output-name docs/research/fgpat/results/fgpat-missing-permission` | permission 不足の `403` / warning | 未実施 | 未確認 | 未確認 | 未確認 | Runbook に従い human approval 後に実施 |
-| T06 | FGPAT | Resource owner が対象 ORG ではない | `GH_CONFIG_DIR=/tmp/gh-fgpat-wrong-owner gh api repos/ORG/REPO --jq .full_name` | `404` | 既存実測で `404` | 1 | 404 | FGPAT設定不足 | `docs/research/fgpat/fgpat-validation-design.md` |
+| T06 | FGPAT | Resource owner が対象 ORG ではない | `GH_CONFIG_DIR=/tmp/gh-fgpat-wrong-owner gh api repos/ORG/REPO --jq .full_name` | `404` | 既存実測で `404` | 1 | 404 | FGPAT設定不足 | この資料の既存実測サマリ |
 | T07 | FGPAT | Organization approval 未承認 | `GH_CONFIG_DIR=/tmp/gh-fgpat-pending gh api repos/ORG/REPO --jq .full_name` | private resource access 不可 | 未実施 | 未確認 | 未確認 | 未確認 | https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/managing-requests-for-personal-access-tokens-in-your-organization |
 
 ## 10. 最終判定
@@ -302,7 +351,7 @@ GitHub GraphQL docs は、personal access token で GraphQL API に認証でき�
 - `GET /orgs/{org}/copilot/billing` は両方で可能だが、Classic PAT は `manage_billing:copilot` または `read:org`、FGPAT は `GitHub Copilot Business` organization read または `Administration` organization read が必要。
   - 出典: https://docs.github.com/en/rest/copilot/copilot-user-management
 - ghqr の explicit repository scan は既存実測で両方成功したが、FGPAT は Resource owner / Repository access / permission / approval が正しい場合に限る。
-  - 出典: `docs/research/fgpat/fgpat-validation-design.md`
+  - 出典: この資料の既存実測サマリ
 
 ### 未確認のもの
 

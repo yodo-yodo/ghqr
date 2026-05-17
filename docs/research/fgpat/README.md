@@ -6,16 +6,8 @@
 
 ## Files
 
-- `classic-vs-fgpat-compatibility-matrix.md`
-  - Classic PAT と FGPAT の公式仕様差、用語定義、ghqr への影響、README 反映候補
-- `fgpat-full-validation.md`
-  - FGPAT 検証の全体設計、source code 調査、GitHub 公式仕様の整理
-- `fgpat-validation-design.md`
-  - 初期検証の時系列ログと判断基準
-- `fgpat-pr-plan.md`
-  - 改善 PR に向けた調査計画と判断材料
-- `fgpat-capability-diff.md`
-  - Classic PAT と FGPAT の機能差分、実測結果、現時点の最終判断
+- `fgpat-compatibility-and-ghqr-impact.md`
+  - Classic PAT と FGPAT の公式仕様差、用語定義、実測結果、ghqr への影響、README / warning 改善案
 - `enterprise-validation-runbook.md`
   - Enterprise 契約ユーザー向けの追加検証手順
 - `fgpat-validation.example.json`
@@ -23,24 +15,25 @@
 
 ## Recommended reading order
 
-目的ごとに読む資料を分けます。全ファイルを順番に読む必要はありません。
+目的ごとに読む資料を分けます。Markdown 資料は 3 ファイルに整理しています。
 
 1. 全体像と公開ルールを確認する
    - `README.md`
 2. FGPAT 関連用語、Classic PAT との差分、FGPAT で詰まりやすい領域を確認する
-   - `classic-vs-fgpat-compatibility-matrix.md`
-3. 既存の実測結果と ghqr-only failure の有無を確認する
-   - `fgpat-capability-diff.md`
-4. Enterprise 契約環境で安全に追加検証する
+   - `fgpat-compatibility-and-ghqr-impact.md`
+3. Enterprise 契約環境で安全に追加検証する
    - `enterprise-validation-runbook.md`
-5. 初期検証の時系列や token 取り扱いの経緯を確認する
-   - `fgpat-validation-design.md`
 
 資料の役割:
 
-- `classic-vs-fgpat-compatibility-matrix.md` は、公開説明や README / troubleshooting へ転用する根拠資料です。
+- `README.md` は、この research branch の入口、公開ルール、結論、upstream へ切り出す方針を示します。
+- `fgpat-compatibility-and-ghqr-impact.md` は、公開説明や README / troubleshooting へ転用する根拠資料です。
 - `enterprise-validation-runbook.md` は、実 organization / enterprise で追加検証する人向けの手順書です。
-- `fgpat-full-validation.md` と `fgpat-pr-plan.md` は、調査過程を残すための詳細ログです。
+
+旧調査メモの扱い:
+
+- 旧調査メモの内容は、重複を避けるため `fgpat-compatibility-and-ghqr-impact.md` と `enterprise-validation-runbook.md` に要約統合しました。
+- raw command transcript や token 取り扱いの試行錯誤は、公開 fork で共有する資料としては冗長なため残していません。
 
 ## Local-only files
 
