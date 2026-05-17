@@ -6,6 +6,8 @@
 
 ## Files
 
+- `classic-vs-fgpat-compatibility-matrix.md`
+  - Classic PAT と FGPAT の公式仕様差、用語定義、ghqr への影響、README 反映候補
 - `fgpat-full-validation.md`
   - FGPAT 検証の全体設計、source code 調査、GitHub 公式仕様の整理
 - `fgpat-validation-design.md`
@@ -18,6 +20,27 @@
   - Enterprise 契約ユーザー向けの追加検証手順
 - `fgpat-validation.example.json`
   - ローカル検証設定の公開可能なテンプレート
+
+## Recommended reading order
+
+目的ごとに読む資料を分けます。全ファイルを順番に読む必要はありません。
+
+1. 全体像と公開ルールを確認する
+   - `README.md`
+2. FGPAT 関連用語、Classic PAT との差分、FGPAT で詰まりやすい領域を確認する
+   - `classic-vs-fgpat-compatibility-matrix.md`
+3. 既存の実測結果と ghqr-only failure の有無を確認する
+   - `fgpat-capability-diff.md`
+4. Enterprise 契約環境で安全に追加検証する
+   - `enterprise-validation-runbook.md`
+5. 初期検証の時系列や token 取り扱いの経緯を確認する
+   - `fgpat-validation-design.md`
+
+資料の役割:
+
+- `classic-vs-fgpat-compatibility-matrix.md` は、公開説明や README / troubleshooting へ転用する根拠資料です。
+- `enterprise-validation-runbook.md` は、実 organization / enterprise で追加検証する人向けの手順書です。
+- `fgpat-full-validation.md` と `fgpat-pr-plan.md` は、調査過程を残すための詳細ログです。
 
 ## Local-only files
 

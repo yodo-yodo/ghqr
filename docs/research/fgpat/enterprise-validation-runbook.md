@@ -132,6 +132,19 @@ ghqr scan --repository ORG/REPO
 
 各段階で Classic PAT と FGPAT の差分を整理し、permission 不足、GitHub API 仕様、`ghqr-only failure` のどれかに分類してから次の段階へ進みます。
 
+### 危険度順の検証対象
+
+初期検証では、次の順でリスクを見積もります。上にあるものほど Enterprise / Organization 管理者から見たアクセス範囲が広く、事前合意なしに実施しません。
+
+| 危険度 | 対象 | 理由 | 初期検証での扱い |
+|---|---|---|---|
+| 1 | Enterprise 系 scan / discovery | Enterprise 全体の organization、audit、security settings へ広がる | 禁止。Enterprise owner と合意してから限定 probe にする。 |
+| 2 | Organization 全体 scan | repository 一覧、各 repository scan、org security / actions / Copilot endpoint へ広がる | 禁止。repository 明示指定で先に切り分ける。 |
+| 3 | Copilot / GHAS / Security alerts | 契約、role、security alert access log、billing access log に依存する | 必要性を整理してから endpoint 単位で確認する。 |
+| 4 | Actions / Security managers | Organization administration / security role に依存する | `403` / `404` を permission limitation として記録する。 |
+| 5 | archived / transferred / access 対象外 repository | FGPAT Repository access や owner 移管により visibility が変わる | local config で対象を明示し、repository 単位で確認する。 |
+| 6 | Rate limit / GraphQL cost limit | repository 数や nested connection によって API 制限へ到達する | 小さい対象から始め、organization-wide query を避ける。 |
+
 ### 禁止事項
 
 初期検証段階では、次を実施しません。

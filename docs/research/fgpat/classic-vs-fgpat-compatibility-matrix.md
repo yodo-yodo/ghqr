@@ -95,6 +95,15 @@ ghqr ソースコード:
 | Enterprise access | Enterprise admin role や enterprise permission / Classic PAT scope が必要な enterprise-level API access。 | https://docs.github.com/en/enterprise-cloud@latest/rest/enterprise-admin/audit-log |
 | REST endpoint | GitHub REST API の method + path 単位の API。FGPAT 対応可否と permission は endpoint ごとに公式 Docs で確認する。 | https://docs.github.com/en/rest/authentication/endpoints-available-for-fine-grained-personal-access-tokens |
 | GraphQL field/query | GitHub GraphQL API の query / field。GraphQL docs は、要求する data によって必要 scope / permission が決まると説明している。 | https://docs.github.com/en/graphql/guides/forming-calls-with-graphql |
+| Org policy / PAT access | Organization owner が personal access token の access policy を設定し、Classic PAT または FGPAT の organization resource access を制御する仕組み。 | https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/setting-a-personal-access-token-policy-for-your-organization |
+| Access 対象外 repository | FGPAT の Repository access に含まれていない repository。Private repository では repository が存在しないように見える結果になることがある。 | https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens |
+| Archived repository | Archived 状態の repository。ghqr 検証では private / public repository とは別に、読み取り結果と endpoint 挙動を分けて記録する対象。 | 未確認 |
+| Disabled repository | 利用停止または無効化された repository。GitHub Docs 上の FGPAT 固有差分はこの資料では未確認。 | 未確認 |
+| Transferred repository | owner が移管された repository。FGPAT の Resource owner / Repository access と一致しない場合は別 owner の resource として扱う必要がある。 | https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens |
+| Organization discovery | ghqr が user から見える organization を自動列挙する処理。REST `GET /user/orgs` と GraphQL organization query の可視性に依存する。 | https://docs.github.com/en/rest/authentication/endpoints-available-for-fine-grained-personal-access-tokens |
+| Organization repositories GraphQL | ghqr が GraphQL `organization(login:) { repositories(...) }` で organization 配下 repository を列挙する処理。Organization 全体 scan では API volume が増える。 | https://docs.github.com/en/graphql/guides/forming-calls-with-graphql |
+| Rate limit | GitHub API の rate limit。ghqr は HTTP transport で rate limit response を扱うが、検証では API volume を最小化する。 | https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api |
+| GraphQL cost limit | GitHub GraphQL API の query cost / resource limit。ghqr は org-wide batch scan で一部 connection を省略し、batch size を小さくしている。 | https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api |
 
 ## 3. Classic PAT のみ可能なもの
 
@@ -152,6 +161,31 @@ ghqr が利用する REST endpoint と、prompt で確認対象に指定され�
 | Enterprise security alerts | `GET /enterprises/{enterprise}/code-scanning/alerts` | 対応リスト上は未確認 | 未確認 | 未確認 | https://docs.github.com/en/rest/authentication/endpoints-available-for-fine-grained-personal-access-tokens | 未確認 | ghqr enterprise scan で使用。 |
 | Enterprise security alerts | `GET /enterprises/{enterprise}/secret-scanning/alerts` | 対応リスト上は未確認 | 未確認 | 未確認 | https://docs.github.com/en/rest/authentication/endpoints-available-for-fine-grained-personal-access-tokens | 未確認 | ghqr enterprise scan で使用。 |
 | Enterprise GHAS settings | `GET /enterprises/{enterprise}/code_security/settings` | 未確認 | 未確認 | 未確認 | https://docs.github.com/en/rest/code-security/configurations | 既存実測で `403` | GitHub Docs で確認できた `code-security/configurations` endpoint とは path が異なるため転用しない。 |
+
+## 5.1 FGPAT で詰まりやすい候補
+
+この表は「FGPAT では常に失敗する」という意味ではない。公式 Docs と既存実測から、FGPAT 設定、GitHub permission、GitHub product availability、enterprise / organization policy により差分が出る領域を整理する。
+
+| ghqrコマンド/機能 | FGPATで詰まる条件 | 一次分類 | 根拠 | ghqrでの扱い |
+|---|---|---|---|---|
+| `ghqr scan --repository ORG/REPO` | Resource owner が対象 organization ではない | FGPAT設定不足 | `docs/research/fgpat/fgpat-validation-design.md` | REST `GET /repos/ORG/REPO` は `404`、GraphQL repository resolve も失敗した既存実測あり。 |
+| `ghqr scan --repository ORG/REPO` | Repository access に対象 repository が含まれていない | FGPAT設定不足 | https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens | `404` または repository resolve failure として見えるため、troubleshooting で確認対象にする。 |
+| `ghqr scan --repository ORG/REPO` | `Contents: Read-only` がない | FGPAT permission不足 | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens | file presence checks や config file detection の欠落として切り分ける。 |
+| `ghqr scan --repository ORG/REPO` | `Administration: Read-only` がない | FGPAT permission不足 | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens | ruleset / branch protection enrichment の失敗として切り分ける。 |
+| `ghqr scan --organization ORG` | Resource owner / Repository access / org approval が対象 org と一致しない | FGPAT設定不足 | https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens | 初期検証では禁止。repository 明示指定で先に切り分ける。 |
+| organization auto-discovery | `GET /user/orgs` または GraphQL organization visibility が空になる | GitHub visibility / org policy | https://docs.github.com/en/rest/authentication/endpoints-available-for-fine-grained-personal-access-tokens | `--repository` または `--organization` 明示指定で切り分ける。 |
+| organization repositories GraphQL | repository 数が多い | GitHub API制限 | https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api | API volume / GraphQL cost の観点で段階的検証にする。 |
+| `ghqr scan --enterprise ENT` | Enterprise role / scope / endpoint token type が不足する | Enterprise制限 | https://docs.github.com/en/enterprise-cloud@latest/rest/enterprise-admin/audit-log | 初期検証では禁止。Enterprise owner と合意してから限定 probe にする。 |
+| Enterprise audit log | FGPAT PAT が endpoint の Fine-grained access token types に含まれない | GitHub API制限 | https://docs.github.com/en/enterprise-cloud@latest/rest/enterprise-admin/audit-log | Classic PAT または GitHub App token が必要な領域として文書化する。 |
+| Enterprise code security settings | ghqr 実装 path の FGPAT 対応が公式 Docs で未確認 | 未確認 | https://docs.github.com/en/rest/code-security/configurations | Enterprise 契約環境で限定 probe が必要。 |
+| Copilot billing | Copilot 契約または organization owner 権限がない | 契約 / permission不足 | https://docs.github.com/en/rest/copilot/copilot-user-management | `403` / `404` / empty result を contract / role と分けて記録する。 |
+| Dependabot alerts | Dependabot / GHAS / alerts permission がない | 契約 / permission不足 | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens | Security endpoint は product availability と permission を分けて記録する。 |
+| Code scanning alerts | GHAS / code scanning / alerts permission がない | 契約 / permission不足 | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens | `403` / `404` / empty result を区別する。 |
+| Secret scanning alerts | GHAS / secret scanning / alerts permission がない | 契約 / permission不足 | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens | `403` / `404` / empty result を区別する。 |
+| Security managers | Organization admin / security manager visibility がない | permission不足 | https://docs.github.com/en/rest/authentication/endpoints-available-for-fine-grained-personal-access-tokens | ghqr は inaccessible endpoint を empty result として扱う箇所がある。 |
+| Archived repository | archived 特有の read-only 状態で scan 結果が private test repository と異なる | 未確認 | 未確認 | Runbook の別 repository 検証対象にする。 |
+| Disabled repository | GitHub 管理側状態により API visibility が変わる | 未確認 | 未確認 | Enterprise 管理者が確認できる場合だけ検証する。 |
+| Transferred repository | Resource owner / repository full name が移管後 owner と一致しない | FGPAT設定不足 | https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens | local config の target repository を移管後 owner に更新する。 |
 
 ## 6. GraphQL API 差分
 
