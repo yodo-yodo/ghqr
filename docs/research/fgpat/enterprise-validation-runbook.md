@@ -99,6 +99,84 @@ docs/research/fgpat/results/
 
 公開資料に書くのは、local results から作ったマスク済み要約だけです。
 
+## 0.3 Safe staged validation policy
+
+Enterprise / Organization 環境では、初期検証から organization 全体を対象にした scan を実施しません。検証目的は FGPAT の互換性、endpoint ごとの permission 要件、GitHub API 制限と `ghqr` 実装差分の切り分けであり、organization 全体の inventory 収集や大規模監査ではありません。
+
+### 初期検証ポリシー
+
+初期検証では、organization 全 repository を対象にした scan を実施しません。
+
+特に次の command は初期検証段階では禁止します。
+
+```bash
+ghqr scan --organization ORG_NAME
+```
+
+初期段階では、repository 明示指定 scan を優先します。
+
+```bash
+ghqr scan --repository ORG/REPO
+```
+
+この方針により、API volume を最小化し、「何を確認するためのアクセスだったか」を後から説明できる範囲に留めます。
+
+### 推奨検証順序
+
+対象を段階的に広げます。
+
+1. private test repository 1 個
+2. archived repository 1 個
+3. 小規模 organization
+4. 必要性と影響を確認してから organization scan を検討
+
+各段階で Classic PAT と FGPAT の差分を整理し、permission 不足、GitHub API 仕様、`ghqr-only failure` のどれかに分類してから次の段階へ進みます。
+
+### 禁止事項
+
+初期検証段階では、次を実施しません。
+
+- organization 全 repository を対象にした `ghqr scan --organization ORG_NAME`
+- enterprise 全体を対象にした探索的 scan
+- repository 一覧を目的にした広範囲な auto-discovery
+- 必要性が未整理の audit log / Copilot / security endpoint probe
+- permission 不足が大量に発生する状態での繰り返し実行
+- raw 結果を public docs、issue、PR、chat に貼ること
+
+### なぜそうするのか
+
+organization-wide scan は、限定的な repository scan よりも GitHub API へのアクセス範囲が広がります。
+
+- organization 配下の repository 一覧列挙が発生する
+- GraphQL / REST API 呼び出し量が増える
+- security / actions / copilot / audit 関連 endpoint へ波及する可能性がある
+- enterprise 管理者から見たときに、探索的または広範囲なアクセスに見える可能性がある
+- permission 不足時の 403 / warning が大量発生する可能性がある
+- GitHub audit log 上で目立つ可能性がある
+
+そのため、最初は repository 単位で permission と endpoint 挙動を切り分けます。403 / 404 / warning の意味を整理してから、必要な範囲だけ対象を広げます。
+
+### GitHub audit / API log 観点
+
+Enterprise 環境では、次の観点で後から確認される可能性があります。
+
+- GitHub audit log
+- API usage monitoring
+- security alert access logs
+- Copilot billing access logs
+- organization settings access
+- code scanning / secret scanning / dependabot alert access
+
+検証者は、各 API access について「FGPAT 互換性確認のために、限定した repository / endpoint に対して実施した」と説明できる状態を維持します。
+
+organization-wide scan を許可する前に、次を確認します。
+
+- repository 明示指定 scan が安定している
+- permission 要件が整理されている
+- audit log 上の見え方を理解している
+- enterprise 管理者への説明可能性がある
+- warning / 403 の整理が完了している
+
 ## 1. GitHub Enterprise prerequisites
 
 検証前に、Enterprise owner または Organization owner が次を確認します。
