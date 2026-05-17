@@ -1,0 +1,48 @@
+{
+  "description": "Copy this file to fgpat-validation.local.json and replace placeholder values locally. Do not commit the local file.",
+  "ghqrCommand": {
+    "linuxAlias": "alias ghqr='./bin/linux_amd64/ghqr'",
+    "macosNote": "Use a locally built macOS binary or a ghqr executable on PATH. Do not edit shell startup files for this validation."
+  },
+  "targets": {
+    "enterpriseSlug": "example-enterprise",
+    "organization": "example-org",
+    "repositories": [
+      "example-org/example-repo"
+    ],
+    "publicRepository": "example-org/example-public-repo",
+    "archivedRepository": "example-org/example-archived-repo"
+  },
+  "tokens": {
+    "classicGhConfigDir": "/tmp/gh-classic-validation",
+    "fgpatGhConfigDir": "/tmp/gh-fgpat-validation",
+    "classicTokenEnvName": "CLASSIC_GH_TOKEN",
+    "fgpatTokenEnvName": "FGPAT_GH_TOKEN"
+  },
+  "outputs": {
+    "directory": "docs/research/fgpat/results",
+    "classicPrefix": "classic",
+    "fgpatPrefix": "fgpat"
+  },
+  "checks": {
+    "repositoryScan": true,
+    "organizationScan": true,
+    "autoDiscovery": true,
+    "enterpriseDiscovery": true,
+    "enterpriseScan": true,
+    "auditLog": true,
+    "copilot": true,
+    "securityEndpoints": true,
+    "actionsPermissions": true,
+    "rulesetsAndBranchProtection": true
+  },
+  "masking": {
+    "organization": "example-org",
+    "enterpriseSlug": "example-enterprise",
+    "repository": "example-repo",
+    "username": "example-user",
+    "team": "example-team",
+    "internalHostname": "example.internal",
+    "ipAddress": "example-ip"
+  }
+}

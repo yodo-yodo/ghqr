@@ -16,6 +16,24 @@
   - Classic PAT と FGPAT の機能差分、実測結果、現時点の最終判断
 - `enterprise-validation-runbook.md`
   - Enterprise 契約ユーザー向けの追加検証手順
+- `fgpat-validation.example.json`
+  - ローカル検証設定の公開可能なテンプレート
+
+## Local-only files
+
+検証者は、次の local-only file / directory を使います。これらは `.gitignore` 対象で、commit しません。
+
+- `docs/research/fgpat/fgpat-validation.local.json`
+  - 実 organization、repository、enterprise slug、output path、masking placeholder を記録するローカル設定
+- `docs/research/fgpat/results/`
+  - raw JSON / Markdown / Excel reports、stdout/stderr logs、API response dumps、screen capture などを保存するローカル結果ディレクトリ
+
+作成例:
+
+```bash
+cp docs/research/fgpat/fgpat-validation.example.json docs/research/fgpat/fgpat-validation.local.json
+mkdir -p docs/research/fgpat/results
+```
 
 ## Public sharing rules
 
@@ -23,7 +41,9 @@
 - screenshot には個人名、メールアドレス、内部 URL、IP、enterprise slug、organization slug を含めない
 - 実 organization 名、実 repository 名、実 username は placeholder に置換する
 - `GH_CONFIG_DIR` の中身、`.env`、shell history、`.codex`、生成 report は commit しない
-- この資料における `ghqr` は、リポジトリルートから実行する `./bin/linux_amd64/ghqr` の短縮表記である
+- この資料における `ghqr` は、検証者の shell で実行可能な `ghqr` command を指す
+- Linux では `alias ghqr='./bin/linux_amd64/ghqr'` のような shell セッション限定 alias を使える
+- macOS では build 済み macOS binary または PATH 上の `ghqr` を使う
 - `.bashrc` などの恒久的な shell 設定は変更しない
 
 ## Current conclusion
@@ -57,6 +77,7 @@ Current check result:
 - Markdown research files were copied into `docs/research/fgpat/`
 - Generated JSON / Markdown / Excel scan reports remain outside this docs tree and are not intended for commit
 - Source-specific names were replaced with public placeholders such as `example-org`, `example-user`, and `fgpat-validation-repo`
+- `fgpat-validation.local.json` and `results/` are ignored by git
 - Public-safety scan completed for docs/research/fgpat before commit
 
 ## Expected upstream split

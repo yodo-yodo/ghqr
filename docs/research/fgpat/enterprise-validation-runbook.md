@@ -4,6 +4,101 @@
 
 この資料では実 organization、enterprise、username、repository 名を記録しません。記録時は `example-enterprise`、`example-org`、`example-repo` のような placeholder に置換してください。
 
+## 0. Operating model
+
+この検証は、最初に人間が GitHub Web UI で準備し、その後にコーディングエージェントへローカル検証を任せる前提です。
+
+Enterprise 契約ユーザーでも、検証者が Enterprise owner や Organization owner 権限を持っているとは限りません。権限不足は検証の失敗ではなく、`GitHub permission limitation`、`org policy limitation`、`enterprise limitation` のどれかに分類して記録します。
+
+### Human-only manual steps
+
+次は人間が GitHub Web UI で実施します。コーディングエージェントに任せないでください。
+
+- Enterprise / Organization policy の確認
+- SAML / SSO / IP allow list / PAT policy の確認
+- Fine-grained PAT の作成
+- Fine-grained PAT request の Organization owner approval
+- GHAS / Copilot 契約有無の確認
+- 検証用 repository の作成と security feature 設定
+- branch protection / ruleset / Actions permissions の画面設定
+- screenshot を撮る場合の個人情報除去
+
+### Agent-assisted steps
+
+次は、手作業が完了した後にコーディングエージェントへ任せられます。
+
+- local config の整合性確認
+- `gh auth` の隔離設定確認
+- `ghqr scan` の Classic PAT / FGPAT 比較実行
+- `gh api` / `gh api graphql` の単体 probe
+- raw results の local ignored directory への保存
+- マスク済み要約の作成
+- `ghqr-only failure` の有無の切り分け
+
+### ghqr command on Linux and macOS
+
+この runbook の `ghqr` は、検証者の shell で実行できる `ghqr` command を指します。リポジトリ内の Linux binary へ固定しません。
+
+Linux で repo root から実行する例:
+
+```bash
+alias ghqr='./bin/linux_amd64/ghqr'
+```
+
+macOS で実行する例:
+
+```bash
+alias ghqr='./bin/darwin_arm64/ghqr'
+```
+
+または、検証者が build 済み binary を PATH に置いている場合は、そのまま `ghqr` を使います。この alias は現在の shell セッション限定にし、`.bashrc`、`.zshrc`、`.profile` などには書き込まないでください。
+
+## 0.1 Local configuration file
+
+公開用 template:
+
+```text
+docs/research/fgpat/fgpat-validation.example.json
+```
+
+検証者がローカルで作る private config:
+
+```text
+docs/research/fgpat/fgpat-validation.local.json
+```
+
+`fgpat-validation.local.json` は `.gitignore` 対象です。実 organization、repository、enterprise slug、output directory、masking placeholder をここに記録します。この local file は commit しません。
+
+作成手順:
+
+```bash
+cp docs/research/fgpat/fgpat-validation.example.json docs/research/fgpat/fgpat-validation.local.json
+```
+
+必ず編集する項目:
+
+- `targets.enterpriseSlug`
+- `targets.organization`
+- `targets.repositories`
+- `targets.publicRepository`
+- `targets.archivedRepository`
+- `tokens.classicGhConfigDir`
+- `tokens.fgpatGhConfigDir`
+- `outputs.directory`
+- `masking.*`
+
+## 0.2 Local result storage
+
+raw results は次の directory に保存します。
+
+```text
+docs/research/fgpat/results/
+```
+
+この directory は `.gitignore` 対象です。raw JSON / Markdown / Excel reports、command stdout/stderr logs、screen captures、API response dumps は commit しません。
+
+公開資料に書くのは、local results から作ったマスク済み要約だけです。
+
 ## 1. GitHub Enterprise prerequisites
 
 検証前に、Enterprise owner または Organization owner が次を確認します。
@@ -12,9 +107,10 @@
 
 - GitHub Enterprise Cloud か GitHub Enterprise Server か
 - Enterprise Managed Users (EMU) を利用しているか
-- Enterprise slug を検証資料に記録してよいか
+- Enterprise slug を local config に記録してよいか
 - Enterprise audit log へのアクセス権限を持つ管理者がいるか
 - Enterprise-level API access に必要な role を持つ検証ユーザーがいるか
+- 検証者が Enterprise owner ではない場合、どの項目を依頼ベースで確認するか
 
 ### Authentication and access policy
 
@@ -197,6 +293,12 @@ Classic PAT と FGPAT で同じ対象、同じ `ghqr` command、同じ output na
 
 Do not paste token values into docs, issues, PRs, chat, or shell history.
 
+All examples assume:
+
+- `ghqr` is available in the current shell
+- target values are read from `docs/research/fgpat/fgpat-validation.local.json` by the human or agent
+- raw outputs are written under `docs/research/fgpat/results/`
+
 ### Isolated gh auth stores
 
 ```bash
@@ -223,18 +325,18 @@ GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh api repos/example-org/example-repo --j
 ### ghqr scan commands
 
 ```bash
-GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --repository example-org/example-repo --output-name audit_data/classic-repo
-GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --repository example-org/example-repo --output-name audit_data/fgpat-repo
+GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --repository example-org/example-repo --output-name docs/research/fgpat/results/classic-repo
+GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --repository example-org/example-repo --output-name docs/research/fgpat/results/fgpat-repo
 ```
 
 ```bash
-GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --organization example-org --output-name audit_data/classic-org
-GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --organization example-org --output-name audit_data/fgpat-org
+GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --organization example-org --output-name docs/research/fgpat/results/classic-org
+GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --organization example-org --output-name docs/research/fgpat/results/fgpat-org
 ```
 
 ```bash
-GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --enterprise example-enterprise --output-name audit_data/classic-enterprise
-GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --enterprise example-enterprise --output-name audit_data/fgpat-enterprise
+GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-classic-validation gh auth token)" ghqr scan --enterprise example-enterprise --output-name docs/research/fgpat/results/classic-enterprise
+GITHUB_TOKEN="$(GH_CONFIG_DIR=/tmp/gh-fgpat-validation gh auth token)" ghqr scan --enterprise example-enterprise --output-name docs/research/fgpat/results/fgpat-enterprise
 ```
 
 ### REST endpoint probes
@@ -284,6 +386,7 @@ Record every validation step with:
 - generated files
 - classification
 - next action if failed
+- whether the result is raw or masked
 
 Do not record:
 
@@ -300,6 +403,7 @@ Do not record:
 - `.codex`
 - `GH_CONFIG_DIR` contents
 - generated reports that may include private organization data
+- local config file contents unless already masked
 
 ## 9. Anonymization rules
 
@@ -309,11 +413,16 @@ Do not record:
 - Replace real usernames with `example-user`
 - Replace internal hostnames with `example.internal`
 - Replace IP addresses with `example-ip` or omit them
+- Replace team names with `example-team`
+- Replace email addresses with `user@example.com`
+- Replace audit log actors with `example-actor`
+- Replace repository IDs, node IDs, and database IDs with `example-id`
+- Remove security finding details that identify internal systems
 - Keep GitHub official documentation URLs as-is
 
 ## 10. Report storage
 
-- Store raw generated reports outside public docs unless they are sanitized
+- Store raw generated reports in `docs/research/fgpat/results/`
 - Do not commit JSON / Markdown / Excel reports from real organizations
 - If a report must be shared, remove organization names, usernames, repository names, URLs, IDs, and any security findings that identify internal systems
 - Prefer summarized tables over raw report files
@@ -343,3 +452,118 @@ After Enterprise validation is complete, split upstream-facing changes into:
 - no raw research logs
 - no generated reports
 - no organization-specific command output
+
+## 13. Copyable prompt: manual preparation verification
+
+Use this prompt after the human operator has completed the GitHub Web UI preparation. The agent must stop if the manual work is incomplete.
+
+```text
+You are validating whether the human-only GitHub Enterprise FGPAT preparation is complete before running ghqr.
+
+Repository: this local ghqr checkout.
+Runbook: docs/research/fgpat/enterprise-validation-runbook.md
+Local config: docs/research/fgpat/fgpat-validation.local.json
+Results directory: docs/research/fgpat/results/
+
+Rules:
+- Do not print token values, token fragments, prefixes, or suffixes.
+- Do not read or commit GH_CONFIG_DIR contents.
+- Do not commit docs/research/fgpat/results/.
+- Do not commit docs/research/fgpat/fgpat-validation.local.json.
+- Do not modify .bashrc, .zshrc, .profile, or other shell startup files.
+- Treat ghqr as a command available in the current shell. If missing, report setup is incomplete.
+
+Check and report:
+- local config exists and is ignored by git.
+- results directory is ignored by git.
+- targets.enterpriseSlug, targets.organization, and targets.repositories are not placeholder values.
+- masking placeholders are present.
+- Classic PAT gh auth store exists or can be checked without exposing token values.
+- FGPAT gh auth store exists or can be checked without exposing token values.
+- Human has confirmed Enterprise Cloud or Server, EMU, SAML, PAT policy, FGPAT approval policy, IP allow list, GHAS, Copilot, Actions permissions.
+- Human has confirmed FGPAT Resource owner, Repository access, Repository permissions, Organization permissions, and Organization owner approval status.
+- Human has prepared the validation repository features requested by the runbook.
+
+If any manual prerequisite is incomplete, do not run ghqr. State that manual work is incomplete and list the missing items.
+If prerequisites are complete, say that validation execution can start and list the exact next commands without exposing secrets.
+```
+
+## 14. Copyable prompt: validation execution
+
+Use this prompt only after the manual preparation verification prompt passes.
+
+```text
+Run the FGPAT Enterprise validation from docs/research/fgpat/enterprise-validation-runbook.md.
+
+Use:
+- docs/research/fgpat/fgpat-validation.local.json for targets and output locations.
+- docs/research/fgpat/results/ for all raw outputs.
+- ghqr command from the current shell.
+- GH_CONFIG_DIR values from the local config.
+
+Rules:
+- Do not display token values, token fragments, prefixes, or suffixes.
+- Do not use echo, env, or printenv to show tokens.
+- Do not commit raw results, local config, GH_CONFIG_DIR contents, screenshots, or shell history.
+- If ghqr is unavailable, stop and report setup is incomplete.
+- If a GitHub Web UI prerequisite appears missing, stop and report manual work is incomplete.
+
+Run paired Classic PAT and FGPAT checks for:
+- repository scan
+- organization scan
+- auto-discovery
+- enterprise discovery
+- enterprise scan
+- audit log endpoint
+- Copilot endpoint
+- security endpoints
+- rulesets and branch protection
+- actions permissions
+
+For every command, record in a local results summary:
+- command with secrets omitted
+- token source label only
+- exit code
+- stdout summary
+- stderr summary
+- generated files
+- classification: same behavior, GitHub permission limitation, org policy limitation, enterprise limitation, or ghqr-only failure
+- next action if failed
+
+After execution, create a masked summary only. Replace organization, repository, enterprise slug, usernames, team names, URLs, IPs, emails, node IDs, database IDs, and internal security details with placeholders.
+```
+
+## 15. Copyable prompt: result sanitization review
+
+Use this prompt before sharing any validation result.
+
+```text
+Review the FGPAT validation outputs for public sharing safety.
+
+Inputs:
+- docs/research/fgpat/results/
+- docs/research/fgpat/fgpat-validation.local.json
+- any proposed masked summary file
+
+Rules:
+- Do not print token values, token fragments, prefixes, or suffixes.
+- Do not include raw result files in commits.
+- Do not include local config in commits.
+- Do not include screenshots unless separately confirmed sanitized.
+
+Verify that the proposed summary masks:
+- organization names
+- repository names
+- enterprise slugs
+- usernames
+- team names
+- email addresses
+- internal URLs
+- IP addresses
+- audit actors
+- repository IDs, node IDs, database IDs
+- security findings that reveal internal systems
+
+If masking is incomplete, state that the result is not safe to share and list the fields that must be fixed.
+If masking is complete, state that the summary is safe to share and confirm that raw outputs remain local-only.
+```
